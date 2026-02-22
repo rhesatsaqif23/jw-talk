@@ -10,6 +10,8 @@ import { handleSocketConnection } from "./controllers/socket.controller.js";
 
 const app = express();
 const httpServer = createServer(app);
+
+// Menangkap origin dari Vercel nantinya, default ke localhost untuk development
 const clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:3000";
 
 const io = new SocketIOServer(httpServer, {
@@ -27,12 +29,11 @@ app.use(
 );
 app.use(express.json());
 
-// Jalankan Socket Controller
 handleSocketConnection(io);
 
 // Routing REST API
 app.get("/", (req, res) => {
-  res.json({ success: true, message: "Welcome to JW-Talks API" });
+  res.json({ success: true, message: "Welcome to JW-Talks API is Running!" });
 });
 app.get("/health", (_req, res) => {
   res.json({ success: true, message: "OK" });
@@ -40,13 +41,13 @@ app.get("/health", (_req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/chat", chatRoutes);
 
-// Menggunakan PORT 5000 sebagai default
+// Render akan menyuntikkan port secara otomatis melalui process.env.PORT
 const PORT = process.env.PORT || 5000;
 
 httpServer.listen(PORT, async () => {
-  console.log(`Server JW-Talks berjalan di http://localhost:${PORT}`);
+  console.log(`Server JW-Talks berhasil berjalan di port ${PORT}`);
 
-  // Auto-seed: Membuat default room "General" jika database masih kosong (Fitur Anggota 1)
+  // Auto-seed: Membuat default room "General" jika database masih kosong
   try {
     const roomCount = await prisma.room.count();
     if (roomCount === 0) {
