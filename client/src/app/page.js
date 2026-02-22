@@ -8,11 +8,12 @@ import {
   saveAccessToken,
 } from "../lib/session";
 
-const initialForm = { username: "", password: "" };
+const initialRegisterForm = { name: "", email: "", password: "" };
+const initialLoginForm = { email: "", password: "" };
 
 export default function Home() {
-  const [registerForm, setRegisterForm] = useState(initialForm);
-  const [loginForm, setLoginForm] = useState(initialForm);
+  const [registerForm, setRegisterForm] = useState(initialRegisterForm);
+  const [loginForm, setLoginForm] = useState(initialLoginForm);
   const [currentUser, setCurrentUser] = useState(null);
   const [status, setStatus] = useState("Ready");
   const [loading, setLoading] = useState(false);
@@ -26,7 +27,7 @@ export default function Home() {
 
     try {
       const response = await api.get("/auth/me");
-      setCurrentUser(response.data);
+      setCurrentUser(response.data.data);
     } catch (_err) {
       clearAccessToken();
       setCurrentUser(null);
@@ -44,10 +45,10 @@ export default function Home() {
 
     try {
       await api.post("/auth/register", registerForm);
-      setRegisterForm(initialForm);
+      setRegisterForm(initialRegisterForm);
       setStatus("Register success. You can login now.");
     } catch (err) {
-      setStatus(err?.response?.data?.message || "Register failed.");
+      setStatus(err?.response?.data?.error?.message || "Register failed.");
     } finally {
       setLoading(false);
     }
@@ -60,12 +61,12 @@ export default function Home() {
 
     try {
       const response = await api.post("/auth/login", loginForm);
-      saveAccessToken(response.data.accessToken);
-      setLoginForm(initialForm);
+      saveAccessToken(response.data.data.token);
+      setLoginForm(initialLoginForm);
       await loadCurrentUser();
       setStatus("Login success.");
     } catch (err) {
-      setStatus(err?.response?.data?.message || "Login failed.");
+      setStatus(err?.response?.data?.error?.message || "Login failed.");
     } finally {
       setLoading(false);
     }
@@ -96,7 +97,7 @@ export default function Home() {
         <p className="mt-2">
           Current user:{" "}
           <span className="font-semibold">
-            {currentUser ? currentUser.username : "Not logged in"}
+            {currentUser ? currentUser.name || currentUser.email : "Not logged in"}
           </span>
         </p>
         {currentUser && (
@@ -116,12 +117,25 @@ export default function Home() {
         <form className="flex flex-col gap-3" onSubmit={handleRegister}>
           <input
             type="text"
-            placeholder="Username"
-            value={registerForm.username}
+            placeholder="Name"
+            value={registerForm.name}
             onChange={(event) =>
               setRegisterForm((prev) => ({
                 ...prev,
-                username: event.target.value,
+                name: event.target.value,
+              }))
+            }
+            className="rounded border px-3 py-2"
+            required
+          />
+          <input
+            type="email"
+            placeholder="Email"
+            value={registerForm.email}
+            onChange={(event) =>
+              setRegisterForm((prev) => ({
+                ...prev,
+                email: event.target.value,
               }))
             }
             className="rounded border px-3 py-2"
@@ -154,13 +168,13 @@ export default function Home() {
         <h2 className="mb-3 text-lg font-semibold">Login</h2>
         <form className="flex flex-col gap-3" onSubmit={handleLogin}>
           <input
-            type="text"
-            placeholder="Username"
-            value={loginForm.username}
+            type="email"
+            placeholder="Email"
+            value={loginForm.email}
             onChange={(event) =>
               setLoginForm((prev) => ({
                 ...prev,
-                username: event.target.value,
+                email: event.target.value,
               }))
             }
             className="rounded border px-3 py-2"

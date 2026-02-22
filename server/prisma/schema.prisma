@@ -4,25 +4,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-model User {
-  id           Int       @id @default(autoincrement())
-  username     String    @unique
-  passwordHash String
-  createdAt    DateTime  @default(now())
-  messages     Message[]
-}
-
-model Message {
-  id        Int      @id @default(autoincrement())
-  content   String
-  createdAt DateTime @default(now())
-  userId    Int
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([createdAt])
 }
 
 model User {
@@ -33,28 +14,27 @@ model User {
   socketId     String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
-
-  messages     Message[] 
-  rooms        Room[]    @relation("RoomParticipants")
-}
-
-model Room {
-  id           Int       @id @default(autoincrement())
-  name         String    @unique
-  createdAt    DateTime  @default(now())
-
   messages     Message[]
-  participants User[]    @relation("RoomParticipants")
+  rooms        Room[]    @relation("RoomParticipants")
 }
 
 model Message {
   id        Int      @id @default(autoincrement())
   content   String   @db.Text
   createdAt DateTime @default(now())
-  
   userId    Int
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   roomId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+}
+
+model Room {
+  id           Int      @id @default(autoincrement())
+  name         String   @unique
+  createdAt    DateTime @default(now())
+
+  messages     Message[]
+  participants User[]    @relation("RoomParticipants")
 }

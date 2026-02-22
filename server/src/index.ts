@@ -10,17 +10,18 @@ import { handleSocketConnection } from "./controllers/socket.controller.js";
 
 const app = express();
 const httpServer = createServer(app);
+const clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:3000";
 
 const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: "*",
+    origin: clientOrigin,
     methods: ["GET", "POST"],
   },
 });
 
 app.use(
   cors({
-    origin: "*",
+    origin: clientOrigin,
     methods: ["GET", "POST"],
   }),
 );
@@ -32,6 +33,9 @@ handleSocketConnection(io);
 // Routing REST API
 app.get("/", (req, res) => {
   res.json({ success: true, message: "Welcome to JW-Talks API" });
+});
+app.get("/health", (_req, res) => {
+  res.json({ success: true, message: "OK" });
 });
 app.use("/api/auth", authRoutes);
 app.use("/api/chat", chatRoutes);

@@ -1,6 +1,7 @@
-import { Router, Request, Response } from "express";
+import { Router, Response } from "express";
 import { authenticateToken } from "../middlewares/auth.middleware.js";
 import prisma from "../lib/prisma.js";
+import { AuthRequest } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
@@ -8,7 +9,7 @@ const router = Router();
 router.get(
   "/history",
   authenticateToken,
-  async (req: any, res: Response): Promise<any> => {
+  async (req: AuthRequest, res: Response): Promise<any> => {
     try {
       const { roomId, limit = 50 } = req.query;
       const whereClause = roomId ? { roomId: parseInt(roomId as string) } : {};
@@ -34,7 +35,7 @@ router.get(
 router.get(
   "/rooms",
   authenticateToken,
-  async (req: any, res: Response): Promise<any> => {
+  async (_req: AuthRequest, res: Response): Promise<any> => {
     try {
       const rooms = await prisma.room.findMany({
         orderBy: { createdAt: "asc" },
@@ -52,7 +53,7 @@ router.get(
 router.post(
   "/rooms",
   authenticateToken,
-  async (req: any, res: Response): Promise<any> => {
+  async (req: AuthRequest, res: Response): Promise<any> => {
     try {
       const { name } = req.body;
       if (!name)
@@ -79,10 +80,16 @@ router.post(
 router.post(
   "/messages",
   authenticateToken,
-  async (req: any, res: Response): Promise<any> => {
+  async (req: AuthRequest, res: Response): Promise<any> => {
     try {
       const { roomId, content } = req.body;
-      const userId = req.user.id; // Didapat dari authMiddleware
+      const userId = req.user?.id;
+
+      if (!userId)
+        return res.status(401).json({
+          success: false,
+          error: { code: 401, message: "Unauthorized" },
+        });
 
       if (!roomId || !content)
         return res.status(400).json({

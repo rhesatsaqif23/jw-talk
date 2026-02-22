@@ -27,8 +27,16 @@ export const login = async (req: Request, res: Response) => {
 };
 
 export const me = async (req: AuthRequest, res: Response) => {
-  // Logic untuk mengambil profil lengkap bisa ditambahkan di service nanti
-  return sendSuccess(res, { id: req.user?.id }, "Data user ditemukan");
+  try {
+    if (!req.user?.id) return sendError(res, 401, "Unauthorized");
+
+    const user = await authService.getUserProfile(req.user.id);
+    if (!user) return sendError(res, 404, "User tidak ditemukan");
+
+    return sendSuccess(res, user, "Data user ditemukan");
+  } catch (error: any) {
+    return sendError(res, 500, error.message);
+  }
 };
 
 export const logout = async (req: Request, res: Response) => {

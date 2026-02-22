@@ -2,16 +2,53 @@ import { Server, Socket } from "socket.io";
 import * as messageService from "../services/message.service.js";
 import * as userService from "../services/user.service.js";
 import prisma from "../lib/prisma.js"; // Import prisma untuk mengecek eksistensi data
+import jwt from "jsonwebtoken";
+
+type AuthSocket = Socket & {
+  data: {
+    userId?: number;
+    email?: string;
+    name?: string | null;
+  };
+};
 
 export const handleSocketConnection = (io: Server) => {
-  io.on("connection", (socket: Socket) => {
+  io.use((socket, next) => {
+    const token = socket.handshake.auth?.token as string | undefined;
+
+    if (!token) return next(new Error("Missing access token"));
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as {
+        id: number;
+        email?: string;
+        name?: string | null;
+      };
+      socket.data.userId = decoded.id;
+      socket.data.email = decoded.email;
+      socket.data.name = decoded.name;
+      return next();
+    } catch (_error) {
+      return next(new Error("Invalid access token"));
+    }
+  });
+
+  io.on("connection", (socket: AuthSocket) => {
     console.log(`User connected: ${socket.id}`);
 
     // EVENT: JOIN ROOM
-    socket.on("join", async ({ userId, roomId }) => {
+    socket.on("join", async ({ roomId }) => {
       try {
+        const userId = socket.data.userId;
+        if (!userId) {
+          socket.emit("error_event", { message: "Unauthorized socket" });
+          return;
+        }
+
         // Cek apakah User benar-benar ada di database
-        const userExists = await prisma.user.findUnique({ where: { id: Number(userId) } });
+        const userExists = await prisma.user.findUnique({
+          where: { id: Number(userId) },
+        });
         if (!userExists) {
           console.error(`[Socket Error] Join ditolak: User ID ${userId} tidak ditemukan.`);
           socket.emit("error_event", { message: "User tidak ditemukan di database" });
@@ -27,7 +64,7 @@ export const handleSocketConnection = (io: Server) => {
         }
 
         // Jika aman, lakukan update dan join room
-        await userService.updateSocketId(Number(userId), socket.id);
+        await userService.updateSocketId(userId, socket.id);
         socket.join(roomId.toString());
         console.log(`User ID ${userId} successfully joined room: ${roomId}`);
       } catch (error) {
@@ -36,13 +73,16 @@ export const handleSocketConnection = (io: Server) => {
     });
 
     // EVENT: KIRIM PESAN
-    socket.on("message", async ({ roomId, userId, content }) => {
+    socket.on("message", async ({ roomId, content }) => {
       try {
+        const userId = socket.data.userId;
+        if (!userId) return;
+
         // Validasi input kosong
         if (!content || content.trim() === "") return;
 
         // Cek eksistensi User
-        const userExists = await prisma.user.findUnique({ where: { id: Number(userId) } });
+        const userExists = await prisma.user.findUnique({ where: { id: userId } });
         if (!userExists) {
           console.error(`[Socket Error] Pesan ditolak: User ID ${userId} tidak ada.`);
           return; 
@@ -56,11 +96,7 @@ export const handleSocketConnection = (io: Server) => {
         }
 
         // Simpan ke database jika semua valid
-        const message = await messageService.createMessage(
-          Number(roomId),
-          Number(userId),
-          content,
-        );
+        const message = await messageService.createMessage(Number(roomId), userId, content);
 
         // Broadcast ke semua orang di room tersebut
         io.to(roomId.toString()).emit("message", message);
