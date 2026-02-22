@@ -1,7 +1,8 @@
 import { Server, Socket } from "socket.io";
 import * as messageService from "../services/message.service.js";
 import * as userService from "../services/user.service.js";
-import prisma from "../lib/prisma.js"; // Import prisma untuk mengecek eksistensi data
+import * as roomService from "../services/room.service.js"; // IMPORT BARU UNTUK B
+import prisma from "../lib/prisma.js";
 import jwt from "jsonwebtoken";
 
 type AuthSocket = Socket & {
@@ -45,30 +46,59 @@ export const handleSocketConnection = (io: Server) => {
           return;
         }
 
-        // Cek apakah User benar-benar ada di database
-        const userExists = await prisma.user.findUnique({
-          where: { id: Number(userId) },
-        });
-        if (!userExists) {
-          console.error(`[Socket Error] Join ditolak: User ID ${userId} tidak ditemukan.`);
-          socket.emit("error_event", { message: "User tidak ditemukan di database" });
-          return; // Hentikan proses agar tidak error Prisma P2025
-        }
-
-        // Cek apakah Room benar-benar ada di database
-        const roomExists = await prisma.room.findUnique({ where: { id: Number(roomId) } });
-        if (!roomExists) {
-          console.error(`[Socket Error] Join ditolak: Room ID ${roomId} tidak ditemukan.`);
-          socket.emit("error_event", { message: "Room tidak ditemukan di database" });
+        // VALIDASI TIPE DATA (String to Number)
+        const parsedRoomId = parseInt(roomId);
+        if (isNaN(parsedRoomId)) {
+          socket.emit("error_event", { message: "Room ID tidak valid" });
           return;
         }
 
-        // Jika aman, lakukan update dan join room
+        // Cek apakah User benar-benar ada di database
+        const userExists = await prisma.user.findUnique({
+          where: { id: userId },
+        });
+        if (!userExists) {
+          console.error(
+            `[Socket Error] Join ditolak: User ID ${userId} tidak ditemukan.`,
+          );
+          socket.emit("error_event", {
+            message: "User tidak ditemukan di database",
+          });
+          return;
+        }
+
+        // Cek apakah Room benar-benar ada di database
+        const roomExists = await prisma.room.findUnique({
+          where: { id: parsedRoomId },
+        });
+        if (!roomExists) {
+          console.error(
+            `[Socket Error] Join ditolak: Room ID ${parsedRoomId} tidak ditemukan.`,
+          );
+          socket.emit("error_event", {
+            message: "Room tidak ditemukan di database",
+          });
+          return;
+        }
+
+        // Tambahkan user sebagai partisipan room agar sinkron di DB
+        await roomService.addUserToRoom(parsedRoomId, userId);
+
+        // Lakukan update dan join room socket
         await userService.updateSocketId(userId, socket.id);
-        socket.join(roomId.toString());
-        console.log(`User ID ${userId} successfully joined room: ${roomId}`);
+        socket.join(parsedRoomId.toString());
+        console.log(
+          `User ID ${userId} successfully joined room: ${parsedRoomId}`,
+        );
       } catch (error) {
-        console.error("[Socket System Error] Terjadi kesalahan saat join room:", error);
+        console.error(
+          "[Socket System Error] Terjadi kesalahan saat join room:",
+          error,
+        );
+        // Beritahu client jika server gagal melakukan proses database
+        socket.emit("error_event", {
+          message: "Gagal bergabung ke ruangan (Internal Server Error)",
+        });
       }
     });
 
@@ -76,32 +106,61 @@ export const handleSocketConnection = (io: Server) => {
     socket.on("message", async ({ roomId, content }) => {
       try {
         const userId = socket.data.userId;
-        if (!userId) return;
+        if (!userId) {
+          socket.emit("error_event", { message: "Unauthorized socket" });
+          return;
+        }
+
+        // VALIDASI TIPE DATA
+        const parsedRoomId = parseInt(roomId);
+        if (isNaN(parsedRoomId)) {
+          socket.emit("error_event", { message: "Room ID tidak valid" });
+          return;
+        }
 
         // Validasi input kosong
         if (!content || content.trim() === "") return;
 
         // Cek eksistensi User
-        const userExists = await prisma.user.findUnique({ where: { id: userId } });
+        const userExists = await prisma.user.findUnique({
+          where: { id: userId },
+        });
         if (!userExists) {
-          console.error(`[Socket Error] Pesan ditolak: User ID ${userId} tidak ada.`);
-          return; 
-        }
-
-        // Cek eksistensi Room
-        const roomExists = await prisma.room.findUnique({ where: { id: Number(roomId) } });
-        if (!roomExists) {
-          console.error(`[Socket Error] Pesan ditolak: Room ID ${roomId} tidak ada.`);
+          socket.emit("error_event", {
+            message: "Sesi tidak valid, User tidak ditemukan.",
+          });
           return;
         }
 
-        // Simpan ke database jika semua valid
-        const message = await messageService.createMessage(Number(roomId), userId, content);
+        // Cek eksistensi Room
+        const roomExists = await prisma.room.findUnique({
+          where: { id: parsedRoomId },
+        });
+        if (!roomExists) {
+          socket.emit("error_event", {
+            message: "Pesan ditolak: Room tidak ada.",
+          });
+          return;
+        }
+
+        // Simpan ke database
+        const message = await messageService.createMessage(
+          parsedRoomId,
+          userId,
+          content,
+        );
 
         // Broadcast ke semua orang di room tersebut
-        io.to(roomId.toString()).emit("message", message);
+        io.to(parsedRoomId.toString()).emit("message", message);
       } catch (error) {
-        console.error("[Socket System Error] Terjadi kesalahan saat mengirim pesan:", error);
+        console.error(
+          "[Socket System Error] Terjadi kesalahan saat mengirim pesan:",
+          error,
+        );
+        // Beritahu UI Frontend jika terjadi gagal simpan ke database
+        socket.emit("error_event", {
+          message: "Gagal mengirim pesan, silakan coba lagi.",
+        });
       }
     });
 
@@ -111,7 +170,10 @@ export const handleSocketConnection = (io: Server) => {
         await userService.removeSocketId(socket.id);
         console.log(`User disconnected: ${socket.id}`);
       } catch (error) {
-        console.error("[Socket System Error] Terjadi kesalahan saat user disconnect:", error);
+        console.error(
+          "[Socket System Error] Terjadi kesalahan saat user disconnect:",
+          error,
+        );
       }
     });
   });

@@ -2,7 +2,7 @@ import axios from "axios";
 import { clearAccessToken, getAccessToken } from "./session";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -22,10 +22,16 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const status = error?.response?.status;
-    if (status === 401) {
+    if (error?.response?.status === 401) {
       clearAccessToken();
+      // Redirect ke login jika token expired
+      if (
+        typeof window !== "undefined" &&
+        !window.location.pathname.includes("/login")
+      ) {
+        window.location.href = "/login";
+      }
     }
     return Promise.reject(error);
-  }
+  },
 );
