@@ -1,0 +1,20 @@
+import { Response } from "express";
+
+export const sendSuccess = (
+  res: Response,
+  data: any,
+  message: string = "Success",
+  statusCode: number = 200,
+) => {
+  return res.status(statusCode).json({ success: true, message, data });
+};
+
+export const sendError = (
+  res: Response,
+  statusCode: number,
+  message: string,
+) => {
+  return res
+    .status(statusCode)
+    .json({ success: false, error: { code: statusCode, message } });
+};
