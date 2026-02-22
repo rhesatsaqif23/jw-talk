@@ -1,4 +1,4 @@
-import { prisma } from "../index.js";
+import prisma from "../lib/prisma.js";
 
 export const createMessage = async (
   roomId: number,
@@ -11,7 +11,6 @@ export const createMessage = async (
       userId,
       content,
     },
-    // Include data user agar kita bisa tampilkan nama pengirim di frontend
     include: {
       user: { select: { id: true, name: true, email: true } },
     },
@@ -22,7 +21,7 @@ export const getMessagesByRoomId = async (roomId: number) => {
   return await prisma.message.findMany({
     where: { roomId },
     include: {
-      user: { select: { name: true } },
+      user: { select: { id: true, name: true } },
     },
     orderBy: { createdAt: "asc" },
   });

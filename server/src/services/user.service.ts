@@ -1,4 +1,4 @@
-import { prisma } from "../index.js";
+import prisma from "../lib/prisma.js";
 
 export const updateSocketId = async (userId: number, socketId: string) => {
   return await prisma.user.update({

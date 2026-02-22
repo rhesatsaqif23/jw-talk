@@ -1,4 +1,4 @@
-import { prisma } from "../index.js";
+import prisma from "../lib/prisma.js";
 
 export const createRoom = async (name: string) => {
   return await prisma.room.create({
