@@ -1,37 +1,55 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import { createServer } from "http";
+import { Server as SocketIOServer } from "socket.io";
 import { PrismaClient } from "@prisma/client";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
-import router from "./routes/auth.route.js";
 
-// Setup Pool koneksi database
+// Import Routes & Socket Controller
+import authRoutes from "./routes/auth.routes.js";
+import chatRoutes from "./routes/chat.routes.js";
+import { handleSocketConnection } from "./controllers/socket.controller.js";
+
+// Setup Database
 const connectionString = process.env.DATABASE_URL;
 const pool = new Pool({ connectionString });
 const adapter = new PrismaPg(pool);
-
-const app = express();
-
-// Masukkan adapter ke dalam opsi PrismaClient
 export const prisma = new PrismaClient({ adapter });
 
-app.use(cors());
-app.use(express.json());
+// Setup Express & HTTP Server
+const app = express();
+const httpServer = createServer(app);
 
-// Rute default untuk mengecek status server
-app.get("/", (req, res) => {
-  res.json({
-    success: true,
-    message: "Welcome to JW-Talks API Server!",
-    version: "1.0.0",
-  });
+// Setup Socket.IO
+const io = new SocketIOServer(httpServer, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
 });
 
-// Routing untuk Autentikasi
-app.use("/api/auth", router);
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST"],
+  }),
+);
+app.use(express.json());
+
+// Jalankan Socket Controller
+handleSocketConnection(io);
+
+// Routing REST API
+app.get("/", (req, res) => {
+  res.json({ success: true, message: "Welcome to JW-Talks API" });
+});
+app.use("/api/auth", authRoutes);
+app.use("/api/chat", chatRoutes);
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
+// Gunakan httpServer.listen
+httpServer.listen(PORT, () => {
   console.log(`Server JW-Talks berjalan di http://localhost:${PORT}`);
 });
