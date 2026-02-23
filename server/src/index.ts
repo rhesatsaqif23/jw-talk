@@ -1,62 +1,57 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import { createServer } from "http";
-import { Server as SocketIOServer } from "socket.io";
 import prisma from "./lib/prisma.js";
 import authRoutes from "./routes/auth.routes.js";
 import chatRoutes from "./routes/chat.routes.js";
-import { handleSocketConnection } from "./controllers/socket.controller.js";
+// import { createServer } from "http";
+// import { Server as SocketIOServer } from "socket.io";
+// import { handleSocketConnection } from "./controllers/socket.controller.js";
 
 const app = express();
-const httpServer = createServer(app);
 
-// Menangkap origin dari Vercel nantinya, default ke localhost untuk development
 const clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:3000";
-
-const io = new SocketIOServer(httpServer, {
-  cors: {
-    origin: clientOrigin,
-    methods: ["GET", "POST"],
-  },
-});
 
 app.use(
   cors({
     origin: clientOrigin,
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   }),
 );
 app.use(express.json());
 
-handleSocketConnection(io);
-
 // Routing REST API
 app.get("/", (req, res) => {
-  res.json({ success: true, message: "Welcome to JW-Talks API is Running!" });
+  res.json({ success: true, message: "Welcome to JW-Talks API on Vercel!" });
 });
+
 app.get("/health", (_req, res) => {
   res.json({ success: true, message: "OK" });
 });
-app.use("/api/auth", authRoutes);
-app.use("/api/chat", chatRoutes);
 
-// Render akan menyuntikkan port secara otomatis melalui process.env.PORT
-const PORT = process.env.PORT || 5000;
-
-httpServer.listen(PORT, async () => {
-  console.log(`Server JW-Talks berhasil berjalan di port ${PORT}`);
-
-  // Auto-seed: Membuat default room "General" jika database masih kosong
+// Endpoint khusus untuk memicu auto-seed
+app.get("/api/init", async (req, res) => {
   try {
     const roomCount = await prisma.room.count();
     if (roomCount === 0) {
       await prisma.room.create({
         data: { name: "General" },
       });
-      console.log("Created default room 'General'");
+      return res.json({
+        success: true,
+        message: "Created default room 'General'",
+      });
     }
-  } catch (e) {
-    console.error("Failed checking/seeding default room", e);
+    return res.json({ success: true, message: "Default room already exists" });
+  } catch (e: any) {
+    return res.status(500).json({ success: false, error: e.message });
   }
 });
+
+app.use("/api/auth", authRoutes);
+app.use("/api/chat", chatRoutes);
+
+// const PORT = process.env.PORT || 5000;
+// httpServer.listen(PORT, async () => { ... });
+
+export default app;
