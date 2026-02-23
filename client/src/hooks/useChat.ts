@@ -1,68 +1,83 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { io, Socket } from "socket.io-client";
 import { api } from "../lib/api";
-import { getAccessToken } from "../lib/session";
 import { Message } from "../types";
 
-const SOCKET_URL =
-  process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:5000";
-
 export function useChat() {
-  const socketRef = useRef<Socket | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentRoom, setCurrentRoom] = useState<number | null>(null);
 
-  // Inisialisasi Socket
-  useEffect(() => {
-    const token = getAccessToken();
-    if (!token) return;
+  // Ref untuk menyimpan interval
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-    const newSocket = io(SOCKET_URL, {
-      auth: { token },
-    });
-
-    newSocket.on("connect", () =>
-      console.log("Socket connected:", newSocket.id),
-    );
-
-    newSocket.on("message", (newMessage: Message) => {
-      setMessages((prev) => [...prev, newMessage]);
-    });
-
-    newSocket.on("error_event", (err) => alert(err.message));
-
-    socketRef.current = newSocket;
-
-    return () => {
-      newSocket.disconnect();
-    };
-  }, []);
-
-  const joinRoom = useCallback(async (roomId: number) => {
-    if (!socketRef.current) return;
-
+  // Fungsi untuk mengambil histori, di-wrap dengan useCallback agar stabil
+  const fetchMessages = useCallback(async (roomId: number) => {
     try {
-      // Fetch histori pesan via REST API sebelum join socket
       const res = await api.get(`/chat/history?roomId=${roomId}`);
-      setMessages(res.data.data);
-
-      // Join room via socket
-      setCurrentRoom(roomId);
-      socketRef.current.emit("join", { roomId });
+      if (res.data.success) {
+        setMessages(res.data.data);
+      }
     } catch (error) {
-      console.error("Gagal join room", error);
+      console.error("Gagal mengambil pesan", error);
     }
   }, []);
 
+  useEffect(() => {
+    // Bersihkan interval yang mungkin masih berjalan dari room sebelumnya
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+
+    if (currentRoom) {
+      const loadInitialMessages = async () => {
+        await fetchMessages(currentRoom);
+      };
+
+      loadInitialMessages();
+
+      // Buat interval untuk Short Polling (Auto-Refresh tiap 3 detik)
+      pollingIntervalRef.current = setInterval(() => {
+        fetchMessages(currentRoom);
+      }, 2000);
+    }
+
+    // Cleanup saat komponen unmount atau saat currentRoom berubah
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [currentRoom, fetchMessages]);
+
+  const joinRoom = useCallback((roomId: number) => {
+    setCurrentRoom(roomId);
+  }, []);
+
   const sendMessage = useCallback(
-    (content: string) => {
-      if (!socketRef.current || !currentRoom) return;
-      socketRef.current.emit("message", { roomId: currentRoom, content });
+    async (content: string) => {
+      if (!currentRoom) return;
+
+      try {
+        await api.post("/chat/messages", {
+          roomId: currentRoom,
+          content: content,
+        });
+
+        // Ambil pesan terbaru segera setelah mengirim
+        await fetchMessages(currentRoom);
+      } catch (error) {
+        console.error("Gagal mengirim pesan", error);
+        alert("Gagal mengirim pesaSilakan coba lagi.");
+      }
     },
-    [currentRoom],
+    [currentRoom, fetchMessages],
   );
 
-  const leaveRoom = () => setCurrentRoom(null);
+  const leaveRoom = useCallback(() => {
+    setCurrentRoom(null);
+    setMessages([]);
+  }, []);
 
   return { currentRoom, messages, joinRoom, sendMessage, leaveRoom };
 }
