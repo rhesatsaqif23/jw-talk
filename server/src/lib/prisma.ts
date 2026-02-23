@@ -1,16 +1,19 @@
-import { PrismaClient } from "@prisma/client";
-import { Pool } from "pg";
+import pkg from "@prisma/client";
+import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-// Menggunakan Pool dari 'pg' untuk koneksi database
+const { PrismaClient } = pkg;
+const { Pool } = pg;
+
 const connectionString = process.env.DATABASE_URL;
+
+// Buat Pool koneksi
 const pool = new Pool({
   connectionString,
 });
 
 const adapter = new PrismaPg(pool);
 
-// Inisialisasi Prisma Client dengan adapter PostgreSQL
 const prisma = new PrismaClient({ adapter });
 
 export default prisma;
