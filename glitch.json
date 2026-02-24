@@ -1,4 +1,0 @@
-{
-  "install": "cd server && npm install && npx prisma generate",
-  "start": "cd server && npm run build && npm start"
-}
